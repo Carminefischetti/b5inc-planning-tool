@@ -1,0 +1,2561 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>B5_INC Planning Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    html, body { height: 100%; }
+    .tab-active { background-color: rgb(17 24 39); color: white; }
+    .tab-inactive { background-color: rgb(31 41 55); color: rgb(209 213 219); }
+    .tab-inactive:hover { background-color: rgb(55 65 81); color: white; }
+    .modal-backdrop { background: rgba(0,0,0,.55); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .grid-cell { min-width: 5rem; }
+    .contenteditable-cell[contenteditable="true"]:focus { outline: 2px solid rgb(59 130 246); outline-offset: -2px; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+  <!-- Header -->
+  <header class="bg-gray-900 text-white">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-xl font-semibold">B5_INC Planning Tool</div>
+          <div class="text-sm text-gray-300">Backend SharePoint REST API • Multi-utente</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <span id="statusDot" class="inline-block w-3 h-3 rounded-full bg-orange-400"></span>
+            <span id="statusText" class="text-sm text-gray-200">Offline</span>
+          </div>
+          <div class="text-sm text-gray-200">
+            <span class="text-gray-400">Utente:</span> <span id="userDisplayName">—</span>
+          </div>
+          <button id="btnLogin" class="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-sm font-medium">Login</button>
+          <button id="btnLogout" class="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm font-medium hidden">Logout</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-2 flex-wrap">
+        <button id="tabBtn_progetti" class="px-3 py-2 rounded tab-active text-sm font-medium" data-tab="progetti">Progetti</button>
+        <button id="tabBtn_pianificazione" class="px-3 py-2 rounded tab-inactive text-sm font-medium" data-tab="pianificazione">Pianificazione</button>
+        <button id="tabBtn_risorse" class="px-3 py-2 rounded tab-inactive text-sm font-medium" data-tab="risorse">Risorse</button>
+        <button id="tabBtn_configurazione" class="px-3 py-2 rounded tab-inactive text-sm font-medium" data-tab="configurazione">Configurazione</button>
+        <button id="tabBtn_setup" class="px-3 py-2 rounded tab-inactive text-sm font-medium" data-tab="setup">Setup</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Progetti -->
+    <section id="tabPanel_progetti" class="space-y-4">
+      <div class="bg-white rounded shadow p-4">
+        <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 w-full">
+            <div>
+              <label class="text-xs font-medium text-gray-600">Cerca</label>
+              <input id="filterSearch" type="text" class="mt-1 w-full border rounded px-3 py-2 text-sm" placeholder="Nome, REY, RITM, Ticket..." />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600">Status</label>
+              <select id="filterStatus" class="mt-1 w-full border rounded px-3 py-2 text-sm"></select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600">Priority</label>
+              <select id="filterPriority" class="mt-1 w-full border rounded px-3 py-2 text-sm"></select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600">REF IT</label>
+              <input id="filterRefit" type="text" class="mt-1 w-full border rounded px-3 py-2 text-sm" placeholder="REF IT..." />
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button id="btnNewProject" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium">Nuovo progetto</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded shadow overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 text-gray-700">
+            <tr>
+              <th class="text-left px-3 py-2">Nome</th>
+              <th class="text-left px-3 py-2">REY</th>
+              <th class="text-left px-3 py-2">REF IT</th>
+              <th class="text-left px-3 py-2">Status</th>
+              <th class="text-left px-3 py-2">Priority</th>
+              <th class="text-left px-3 py-2">RITM</th>
+              <th class="text-left px-3 py-2">Ticket</th>
+              <th class="text-left px-3 py-2">Owner Reply</th>
+              <th class="text-right px-3 py-2">Effort Venduti</th>
+              <th class="text-right px-3 py-2">Effort Reali</th>
+              <th class="text-right px-3 py-2">Residui</th>
+              <th class="text-left px-3 py-2">Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="projectsTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div class="text-sm text-gray-600">
+          <span id="projectsPageInfo">Pagina 1</span> • <span id="projectsCountInfo">0 progetti</span>
+        </div>
+        <div class="flex gap-2">
+          <button id="btnPrevProjects" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Prev</button>
+          <button id="btnNextProjects" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Next</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pianificazione -->
+    <section id="tabPanel_pianificazione" class="space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <div class="text-sm text-gray-600">Modifica le allocazioni per mese (celle editabili).</div>
+        <button id="btnForceSync" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Forza sync</button>
+      </div>
+      <div id="planningContainer" class="space-y-4"></div>
+    </section>
+
+    <!-- Risorse -->
+    <section id="tabPanel_risorse" class="space-y-4 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white rounded shadow p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold">Risorse</div>
+              <div class="text-xs text-gray-500"><span id="resourcesCount">0</span> risorse</div>
+            </div>
+            <button id="btnNewResource" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium">Nuova risorsa</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-50 text-gray-700">
+                <tr>
+                  <th class="text-left px-3 py-2">Nome</th>
+                  <th class="text-left px-3 py-2">INT/EXT</th>
+                  <th class="text-left px-3 py-2">Mail</th>
+                  <th class="text-left px-3 py-2">JSO</th>
+                  <th class="text-right px-3 py-2">Saturazione</th>
+                  <th class="text-left px-3 py-2">Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="resourcesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-white rounded shadow p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold">Ferie</div>
+              <div class="text-xs text-gray-500">Elenco ferie / festività per risorsa</div>
+            </div>
+            <button id="btnNewHoliday" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium">Nuova ferie</button>
+          </div>
+          <div id="holidaysList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configurazione -->
+    <section id="tabPanel_configurazione" class="space-y-4 hidden">
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="font-semibold">Excel</div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnImportExcel" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Importa Excel</button>
+          <button id="btnExportExcel" class="px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium">Esporta Excel</button>
+          <input id="fileExcel" type="file" class="hidden" accept=".xls,.xlsx,.xlsb" />
+        </div>
+        <div class="text-xs text-gray-500">Import/Export locale con SheetJS.</div>
+      </div>
+
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="font-semibold">Backup / Restore</div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnBackupJson" class="px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium">Backup JSON</button>
+          <button id="btnRestoreJson" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Restore JSON</button>
+          <input id="fileJson" type="file" class="hidden" accept="application/json" />
+        </div>
+      </div>
+
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">Log</div>
+          <div class="flex gap-2">
+            <button id="btnCopyLogs" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Copia</button>
+            <button id="btnClearLogs" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Pulisci</button>
+          </div>
+        </div>
+        <pre id="logBox" class="mono text-xs bg-gray-900 text-gray-100 p-3 rounded overflow-auto max-h-80 whitespace-pre-wrap"></pre>
+      </div>
+    </section>
+
+    <!-- Setup -->
+    <section id="tabPanel_setup" class="space-y-4 hidden">
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="font-semibold">Connessione</div>
+        <div class="text-sm text-gray-600">Site: <span id="spSiteUrlLabel" class="mono"></span></div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnTestConnection" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Test connection</button>
+          <button id="btnCheckLists" class="px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium">Check lists</button>
+          <button id="btnCreateLists" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium">Create lists</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">Stato liste</div>
+          <div class="text-xs text-gray-500">Verifica presenza liste SharePoint</div>
+        </div>
+        <div id="listsStatus" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm"></div>
+      </div>
+
+      <div class="bg-white rounded shadow p-4 space-y-3">
+        <div class="font-semibold">Migration</div>
+        <div class="text-xs text-gray-500">Migra i dati dall'Excel verso SharePoint (scrive solo Title). Usa batch per evitare throttling.</div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnMigrateExcel" class="px-3 py-2 rounded bg-purple-700 hover:bg-purple-600 text-white text-sm font-medium">Migra da Excel a SharePoint</button>
+          <input id="fileMigrateExcel" type="file" class="hidden" accept=".xls,.xlsx,.xlsb" />
+        </div>
+        <div id="migrationStatus" class="text-sm text-gray-700"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toastHost" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+  <!-- Project Modal -->
+  <div id="projectModal" class="fixed inset-0 hidden items-center justify-center z-40">
+    <div class="absolute inset-0 modal-backdrop"></div>
+    <div class="relative bg-white rounded shadow-xl w-[95vw] max-w-4xl max-h-[90vh] overflow-auto">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="font-semibold" id="projectModalTitle">Progetto</div>
+        <button id="btnCloseProjectModal" class="px-3 py-1 rounded border hover:bg-gray-50 text-sm">Chiudi</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="md:col-span-2">
+            <label class="text-xs font-medium text-gray-600">Nome (Title)</label>
+            <input id="p_Title" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">REY</label>
+            <input id="p_REY" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">REF IT</label>
+            <input id="p_REFIT" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Status</label>
+            <select id="p_Status" class="mt-1 w-full border rounded px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Priority</label>
+            <select id="p_Priority" class="mt-1 w-full border rounded px-3 py-2 text-sm"></select>
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">RITM</label>
+            <input id="p_RITM" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Ticket</label>
+            <input id="p_Ticket" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Owner Reply</label>
+            <input id="p_OwnerReply" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Data invio stima</label>
+            <input id="p_DataInvioStima" type="date" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Data approvazione</label>
+            <input id="p_DataApprovazione" type="date" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Data rilascio collaudo</label>
+            <input id="p_DataRilascioCollaudo" type="date" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Data fine UAT</label>
+            <input id="p_DataFineUAT" type="date" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Data rilascio prod</label>
+            <input id="p_DataRilascioProd" type="date" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">RDA</label>
+            <input id="p_RDA" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Valore RDA</label>
+            <input id="p_ValoreRDA" type="number" step="0.01" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Codice GECO</label>
+            <input id="p_CodiceGECO" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">COGE</label>
+            <input id="p_COGE" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Mail</label>
+            <input id="p_Mail" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-xs font-medium text-gray-600">JSO Code Copertura</label>
+            <input id="p_JSOCodeCopertura" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Effort Venduti</label>
+            <input id="p_EffortVenduti" type="number" step="0.01" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Effort Reali</label>
+            <input id="p_EffortReali" type="number" step="0.01" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Residui (auto)</label>
+            <input id="p_Residui" readonly class="mt-1 w-full border rounded px-3 py-2 text-sm bg-gray-50" />
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-gray-600">Effort Sviluppo</label>
+            <input id="p_EffortSviluppo" type="number" step="0.01" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Effort Coll/Supp</label>
+            <input id="p_EffortCollSupp" type="number" step="0.01" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div></div>
+
+          <div class="md:col-span-3">
+            <label class="text-xs font-medium text-gray-600">Nota</label>
+            <textarea id="p_Nota" class="mt-1 w-full border rounded px-3 py-2 text-sm" rows="3"></textarea>
+          </div>
+        </div>
+
+        <input id="p_Id" type="hidden" />
+      </div>
+      <div class="px-4 py-3 border-t flex items-center justify-end gap-2">
+        <button id="btnCancelProject" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Annulla</button>
+        <button id="btnSaveProject" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resource Modal -->
+  <div id="resourceModal" class="fixed inset-0 hidden items-center justify-center z-40">
+    <div class="absolute inset-0 modal-backdrop"></div>
+    <div class="relative bg-white rounded shadow-xl w-[95vw] max-w-2xl">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="font-semibold" id="resourceModalTitle">Risorsa</div>
+        <button id="btnCloseResourceModal" class="px-3 py-1 rounded border hover:bg-gray-50 text-sm">Chiudi</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="md:col-span-2">
+            <label class="text-xs font-medium text-gray-600">Nome</label>
+            <input id="r_ResourceName" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Tipo</label>
+            <select id="r_ResourceType" class="mt-1 w-full border rounded px-3 py-2 text-sm">
+              <option value="INT">INT</option>
+              <option value="EXT">EXT</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Mail</label>
+            <input id="r_Mail" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-xs font-medium text-gray-600">JSO</label>
+            <input id="r_JSO" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <input id="r_Id" type="hidden" />
+      </div>
+      <div class="px-4 py-3 border-t flex items-center justify-end gap-2">
+        <button id="btnCancelResource" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Annulla</button>
+        <button id="btnSaveResource" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Month Modal -->
+  <div id="monthModal" class="fixed inset-0 hidden items-center justify-center z-40">
+    <div class="absolute inset-0 modal-backdrop"></div>
+    <div class="relative bg-white rounded shadow-xl w-[95vw] max-w-xl">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="font-semibold" id="monthModalTitle">Mese</div>
+        <button id="btnCloseMonthModal" class="px-3 py-1 rounded border hover:bg-gray-50 text-sm">Chiudi</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-medium text-gray-600">Anno</label>
+            <input id="m_Year" type="number" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Mese (1-12)</label>
+            <input id="m_Month" type="number" min="1" max="12" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-600">Working Days</label>
+            <input id="m_WorkingDays" type="number" step="1" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <input id="m_Id" type="hidden" />
+      </div>
+      <div class="px-4 py-3 border-t flex items-center justify-end gap-2">
+        <button id="btnCancelMonth" class="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm">Annulla</button>
+        <button id="btnSaveMonth" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Salva</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+'use strict';
+
+/** =========================
+ *  CONFIG
+ *  ========================= */
+const CONFIG = {
+  tenantId: "b00367e2-193a-4f48-94de-7245d45c0947",
+  clientId: "505c5599-8268-4535-9b8a-8d4782a06036",
+  authority: "https://login.microsoftonline.com/b00367e2-193a-4f48-94de-7245d45c0947",
+  redirectUri: "https://carminefischetti.github.io/b5inc-planning-tool/",
+  scopes: ["https://reply.sharepoint.com/.default"],
+  spSiteUrl: "https://reply.sharepoint.com/sites/B5Communications",
+  lists: {
+    projects:"B5INC_Projects",
+    resources:"B5INC_Resources",
+    allocations:"B5INC_Allocations",
+    months:"B5INC_Months",
+    holidays:"B5INC_Holidays"
+  }
+};
+
+const STATUS_OPTIONS = ["Da stimare","In attesa riscontro stima","Da pianificare","In corso","In collaudo","In produzione","Chiuso"];
+const PRIORITY_OPTIONS = ["Alta","Media","Bassa"];
+
+/** =========================
+ *  STATE
+ *  ========================= */
+const state = {
+  activeTab: "progetti",
+  online: navigator.onLine,
+  account: null,
+  token: null,
+  projects: [],
+  resources: [],
+  allocations: [],
+  months: [],
+  holidays: [],
+  projectsPage: 1,
+  projectsPageSize: 25,
+  logs: [],
+  listsStatus: null
+};
+
+const CACHE_KEY = "B5INC_PLANNING_TOOL_CACHE_V1";
+
+/** =========================
+ *  Utilities
+ *  ========================= */
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function safeJson(x) {
+  try {
+    if (x === undefined) return "undefined";
+    if (x === null) return "null";
+    if (typeof x === "string") return x;
+    return JSON.stringify(x, null, 2);
+  } catch (e) {
+    try { return String(x); } catch (e2) { return "[unserializable]"; }
+  }
+}
+
+function log(msg, data = null, level = "INFO") {
+  const line = `[${nowIso()}] [${level}] ${msg}` + (data !== null ? `\n${safeJson(data)}` : "");
+  state.logs.push(line);
+  const box = document.getElementById("logBox");
+  if (box) {
+    box.textContent = state.logs.join("\n\n");
+    box.scrollTop = box.scrollHeight;
+  }
+  console[level === "ERROR" ? "error" : (level === "WARN" ? "warn" : "log")](msg, data ?? "");
+}
+
+function toast(text, kind = "info") {
+  const host = document.getElementById("toastHost");
+  if (!host) return;
+  const colors = {
+    info: "bg-gray-900 text-white",
+    success: "bg-green-700 text-white",
+    warn: "bg-orange-600 text-white",
+    error: "bg-red-700 text-white"
+  };
+  const el = document.createElement("div");
+  el.className = `px-4 py-2 rounded shadow ${colors[kind] || colors.info} text-sm max-w-sm`;
+  el.textContent = text;
+  host.appendChild(el);
+  setTimeout(() => { el.classList.add("opacity-0"); el.style.transition = "opacity 300ms"; }, 2600);
+  setTimeout(() => { try { host.removeChild(el); } catch(e){} }, 3100);
+}
+
+function setOnlineStatus(isOnline) {
+  state.online = !!isOnline;
+  const dot = document.getElementById("statusDot");
+  const txt = document.getElementById("statusText");
+  if (dot) dot.className = "inline-block w-3 h-3 rounded-full " + (state.online ? "bg-green-400" : "bg-orange-400");
+  if (txt) txt.textContent = state.online ? "Online" : "Offline";
+}
+
+function saveToCache() {
+  const payload = {
+    savedAt: nowIso(),
+    projects: state.projects,
+    resources: state.resources,
+    allocations: state.allocations,
+    months: state.months,
+    holidays: state.holidays
+  };
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+    log("Cache salvata");
+  } catch (e) {
+    log("Errore salvataggio cache", { error: String(e) }, "ERROR");
+  }
+}
+
+function loadFromCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return false;
+    const payload = JSON.parse(raw);
+    state.projects = Array.isArray(payload.projects) ? payload.projects : [];
+    state.resources = Array.isArray(payload.resources) ? payload.resources : [];
+    state.allocations = Array.isArray(payload.allocations) ? payload.allocations : [];
+    state.months = Array.isArray(payload.months) ? payload.months : [];
+    state.holidays = Array.isArray(payload.holidays) ? payload.holidays : [];
+    log("Cache caricata", { savedAt: payload.savedAt || null });
+    return true;
+  } catch (e) {
+    log("Errore lettura cache", { error: String(e) }, "ERROR");
+    return false;
+  }
+}
+
+function num(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function str(v) {
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+
+function toIsoDateOrNull(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // If it's already yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // If Excel date number
+  const n = Number(s);
+  if (Number.isFinite(n) && n > 20000 && n < 60000) {
+    const d = XLSX.SSF.parse_date_code(n);
+    if (d && d.y && d.m && d.d) {
+      const mm = String(d.m).padStart(2, "0");
+      const dd = String(d.d).padStart(2, "0");
+      return `${d.y}-${mm}-${dd}`;
+    }
+  }
+
+  // Try dd/mm/yyyy
+  const m = s.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})$/);
+  if (m) {
+    const dd = String(m[1]).padStart(2, "0");
+    const mm = String(m[2]).padStart(2, "0");
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const d2 = new Date(s);
+  if (!isNaN(d2)) return d2.toISOString().slice(0,10);
+  return null;
+}
+
+function calcResidui(project) {
+  const venduti = num(project.EffortVenduti);
+  const reali = num(project.EffortReali);
+  const residui = venduti - reali;
+  return Math.round(residui * 100) / 100;
+}
+
+function getVal(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : "";
+}
+
+function setVal(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.value = (v === null || v === undefined) ? "" : v;
+}
+
+function fillSelect(selectEl, options, defaultLabel = "—") {
+  if (!selectEl) return;
+  selectEl.innerHTML = "";
+  const opt0 = document.createElement("option");
+  opt0.value = "";
+  opt0.textContent = defaultLabel;
+  selectEl.appendChild(opt0);
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o;
+    opt.textContent = o;
+    selectEl.appendChild(opt);
+  }
+}
+
+function sleep(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 0);
+}
+
+function sanitizeSheetName(name) {
+  const s = str(name).replace(/[\[\]\*\/\\\?\:]/g, " ").trim();
+  return s.substring(0, 31) || "Sheet1";
+}
+
+/** =========================
+ *  MSAL Auth
+ *  ========================= */
+const msalConfig = {
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: CONFIG.authority,
+    redirectUri: CONFIG.redirectUri
+  },
+  cache: {
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: false
+  }
+};
+
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+async function acquireToken() {
+  if (!state.account) throw new Error("Nessun account attivo");
+  const request = { scopes: CONFIG.scopes, account: state.account };
+  try {
+    const resp = await msalInstance.acquireTokenSilent(request);
+    state.token = resp.accessToken;
+    return state.token;
+  } catch (e) {
+    log("acquireTokenSilent fallita, fallback popup", { error: String(e) }, "WARN");
+    const resp = await msalInstance.acquireTokenPopup({ scopes: CONFIG.scopes });
+    state.token = resp.accessToken;
+    state.account = resp.account || state.account;
+    msalInstance.setActiveAccount(state.account);
+    return state.token;
+  }
+}
+
+function updateAuthUi() {
+  const btnLogin = document.getElementById("btnLogin");
+  const btnLogout = document.getElementById("btnLogout");
+  const userEl = document.getElementById("userDisplayName");
+  const name = state.account?.name || state.account?.username || "—";
+  if (userEl) userEl.textContent = name;
+  if (btnLogin && btnLogout) {
+    if (state.account) {
+      btnLogin.classList.add("hidden");
+      btnLogout.classList.remove("hidden");
+    } else {
+      btnLogin.classList.remove("hidden");
+      btnLogout.classList.add("hidden");
+    }
+  }
+}
+
+async function login() {
+  try {
+    await msalInstance.initialize();
+    const resp = await msalInstance.loginPopup({ scopes: CONFIG.scopes, prompt: "select_account" });
+    state.account = resp.account;
+    msalInstance.setActiveAccount(state.account);
+    await acquireToken();
+    updateAuthUi();
+    toast("Login completato", "success");
+    await bootstrapData();
+  } catch (e) {
+    log("Login fallito", { error: String(e) }, "ERROR");
+    toast("Login fallito", "error");
+  }
+}
+
+async function logout() {
+  try {
+    const account = msalInstance.getActiveAccount();
+    await msalInstance.logoutPopup({ account: account || undefined });
+    state.account = null;
+    state.token = null;
+    updateAuthUi();
+    toast("Logout completato", "success");
+  } catch (e) {
+    log("Logout fallito", { error: String(e) }, "ERROR");
+    toast("Logout fallito", "error");
+  }
+}
+
+/** =========================
+ *  SharePoint REST
+ *  ========================= */
+async function spFetch(relativeUrl, options = {}) {
+  if (!state.token) await acquireToken();
+  const url = CONFIG.spSiteUrl.replace(/\/$/, "") + relativeUrl;
+  const method = (options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", "Bearer " + state.token);
+  headers.set("Accept", "application/json;odata=nometadata");
+  if (method !== "GET") {
+    headers.set("Content-Type", "application/json; charset=utf-8");
+  }
+  const resp = await fetch(url, { ...options, method, headers });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`SP HTTP ${resp.status} ${resp.statusText} - ${text}`);
+  }
+  if (resp.status === 204) return null;
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return await resp.json();
+  return await resp.text();
+}
+
+async function spGetListItems(listTitle, top = 5000) {
+  const rel = `/_api/web/lists/GetByTitle('${encodeURIComponent(listTitle)}')/items?$top=${top}`;
+  const data = await spFetch(rel, { method: "GET" });
+  const items = data && data.value ? data.value : [];
+  return items;
+}
+
+async function spCreateItem(listTitle, payload) {
+  const rel = `/_api/web/lists/GetByTitle('${encodeURIComponent(listTitle)}')/items`;
+  return await spFetch(rel, { method: "POST", body: JSON.stringify(payload) });
+}
+
+async function spUpdateItem(listTitle, id, payload) {
+  const rel = `/_api/web/lists/GetByTitle('${encodeURIComponent(listTitle)}')/items(${id})`;
+  return await spFetch(rel, {
+    method: "POST",
+    headers: { "IF-MATCH": "*", "X-HTTP-Method": "MERGE" },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function spDeleteItem(listTitle, id) {
+  const rel = `/_api/web/lists/GetByTitle('${encodeURIComponent(listTitle)}')/items(${id})`;
+  return await spFetch(rel, {
+    method: "POST",
+    headers: { "IF-MATCH": "*", "X-HTTP-Method": "DELETE" }
+  });
+}
+
+async function testConnection() {
+  const data = await spFetch("/_api/web", { method: "GET" });
+  return data;
+}
+
+async function checkLists() {
+  const data = await spFetch("/_api/web/lists?$top=5000", { method: "GET" });
+  const titles = (data.value || []).map(x => x.Title);
+  const status = {};
+  for (const k of Object.keys(CONFIG.lists)) {
+    const t = CONFIG.lists[k];
+    status[t] = titles.includes(t);
+  }
+  state.listsStatus = status;
+  return status;
+}
+
+async function tryCreateFieldB5Json(listTitle) {
+  // Attempt to create a Note field called B5Json. If forbidden, ignore.
+  const rel = `/_api/web/lists/GetByTitle('${encodeURIComponent(listTitle)}')/fields`;
+  const payload = {
+    Title: "B5Json",
+    FieldTypeKind: 3, // Note
+    Required: false,
+    EnforceUniqueValues: false,
+    RichText: false,
+    AppendOnly: false
+  };
+  try {
+    await spFetch(rel, { method: "POST", body: JSON.stringify(payload) });
+    log(`Campo B5Json creato su lista ${listTitle}`);
+    return true;
+  } catch (e) {
+    log(`Creazione campo B5Json fallita (ok se 403) su ${listTitle}`, { error: String(e) }, "WARN");
+    return false;
+  }
+}
+
+async function createLists() {
+  const listTitles = Object.values(CONFIG.lists);
+  const results = {};
+  for (const title of listTitles) {
+    try {
+      const payload = { AllowContentTypes: true, BaseTemplate: 100, Title: title };
+      await spFetch("/_api/web/lists", { method: "POST", body: JSON.stringify(payload) });
+      log("Lista creata", { title });
+      results[title] = "CREATED";
+      await tryCreateFieldB5Json(title);
+    } catch (e) {
+      log("Creazione lista fallita (potrebbe esistere già)", { title, error: String(e) }, "WARN");
+      results[title] = "FAILED_OR_EXISTS";
+      try { await tryCreateFieldB5Json(title); } catch(_) {}
+    }
+  }
+  await checkLists().catch(()=>{});
+  renderListsStatus();
+  return results;
+}
+
+/** =========================
+ *  Data normalization
+ *  ========================= */
+function normalizeProjectItem(spItem) {
+  let data = {};
+  if (spItem && (spItem.REY !== undefined || spItem.Status !== undefined || spItem.REFIT !== undefined)) {
+    data = spItem;
+  } else {
+    try { data = JSON.parse(spItem.Title); } catch(e) { data = { name: spItem.Title }; }
+  }
+  const p = {
+    Id: spItem.Id,
+    Title: data.Title || data.name || spItem.Title || "",
+    REY: data.REY || "",
+    REFIT: data.REFIT || "",
+    Status: data.Status || "",
+    Priority: data.Priority || "",
+    RITM: data.RITM || "",
+    Ticket: data.Ticket || "",
+    OwnerReply: data.OwnerReply || "",
+    EffortVenduti: num(data.EffortVenduti),
+    EffortReali: num(data.EffortReali),
+    EffortSviluppo: num(data.EffortSviluppo),
+    EffortCollSupp: num(data.EffortCollSupp),
+    DataInvioStima: data.DataInvioStima || null,
+    DataApprovazione: data.DataApprovazione || null,
+    DataRilascioCollaudo: data.DataRilascioCollaudo || null,
+    DataFineUAT: data.DataFineUAT || null,
+    DataRilascioProd: data.DataRilascioProd || null,
+    RDA: data.RDA || "",
+    ValoreRDA: num(data.ValoreRDA),
+    CodiceGECO: data.CodiceGECO || "",
+    COGE: data.COGE || "",
+    Mail: data.Mail || "",
+    Nota: data.Nota || "",
+    JSOCodeCopertura: data.JSOCodeCopertura || "",
+    Residui: 0
+  };
+  p.Residui = calcResidui(p);
+  return p;
+}
+
+function normalizeResourceItem(spItem) {
+  let data = {};
+  if (spItem && (spItem.ResourceName !== undefined || spItem.ResourceType !== undefined)) {
+    data = spItem;
+  } else {
+    try { data = JSON.parse(spItem.Title); } catch(e) { data = { ResourceName: spItem.Title }; }
+  }
+  return {
+    Id: spItem.Id,
+    ResourceName: data.ResourceName || data.name || spItem.Title || "",
+    ResourceType: (data.ResourceType || data.type || "INT") === "EXT" ? "EXT" : "INT",
+    Mail: data.Mail || "",
+    JSO: data.JSO || data.JSOCode || ""
+  };
+}
+
+function normalizeAllocationItem(spItem) {
+  let data = {};
+  if (spItem && (spItem.ProjectTitle !== undefined || spItem.ResourceName !== undefined || spItem.MonthKey !== undefined)) {
+    data = spItem;
+  } else {
+    try { data = JSON.parse(spItem.Title); } catch(e) { data = {}; }
+  }
+  return {
+    Id: spItem.Id,
+    ProjectTitle: data.ProjectTitle || data.project || "",
+    ResourceName: data.ResourceName || data.resource || "",
+    MonthKey: data.MonthKey || data.month || "",
+    Value: num(data.Value)
+  };
+}
+
+function normalizeMonthItem(spItem) {
+  let data = {};
+  if (spItem && (spItem.Year !== undefined || spItem.Month !== undefined || spItem.WorkingDays !== undefined)) {
+    data = spItem;
+  } else {
+    try { data = JSON.parse(spItem.Title); } catch(e) { data = {}; }
+  }
+  const year = num(data.Year);
+  const month = num(data.Month);
+  const key = data.MonthKey || (year && month ? `${year}-${String(month).padStart(2,"0")}` : "");
+  return {
+    Id: spItem.Id,
+    MonthKey: key,
+    Year: year || (key ? num(key.split("-")[0]) : 0),
+    Month: month || (key ? num(key.split("-")[1]) : 0),
+    WorkingDays: num(data.WorkingDays) || 0
+  };
+}
+
+function normalizeHolidayItem(spItem) {
+  let data = {};
+  if (spItem && (spItem.ResourceName !== undefined || spItem.Date !== undefined)) {
+    data = spItem;
+  } else {
+    try { data = JSON.parse(spItem.Title); } catch(e) { data = {}; }
+  }
+  return {
+    Id: spItem.Id,
+    ResourceName: data.ResourceName || "",
+    Date: data.Date || null,
+    Note: data.Note || ""
+  };
+}
+
+function projectToSpPayload(p) {
+  return { Title: str(p.Title).substring(0, 255) };
+}
+function resourceToSpPayload(r) {
+  return { Title: str(r.ResourceName).substring(0, 255) };
+}
+function allocationToSpPayload(a) {
+  const title = JSON.stringify({ ProjectTitle: a.ProjectTitle, ResourceName: a.ResourceName, MonthKey: a.MonthKey, Value: num(a.Value) });
+  return { Title: title.substring(0, 255) };
+}
+function monthToSpPayload(m) {
+  const title = JSON.stringify({ MonthKey: m.MonthKey, Year: num(m.Year), Month: num(m.Month), WorkingDays: num(m.WorkingDays) });
+  return { Title: title.substring(0, 255) };
+}
+function holidayToSpPayload(h) {
+  const title = JSON.stringify({ ResourceName: h.ResourceName, Date: h.Date, Note: h.Note });
+  return { Title: title.substring(0, 255) };
+}
+
+/** =========================
+ *  Bootstrap
+ *  ========================= */
+async function ensureDefaultMonths() {
+  if (Array.isArray(state.months) && state.months.length > 0) return;
+
+  const working2025 = [22, 20, 22, 21, 21, 21, 23, 21, 22, 23, 20, 19];
+  const working2026 = [21, 20, 22, 21, 21, 23, 23, 21]; // Jan-Aug
+  const months = [];
+  for (let i=0;i<12;i++) {
+    const y = 2025, m = i+1;
+    months.push({ Id: null, MonthKey: `${y}-${String(m).padStart(2,"0")}`, Year: y, Month: m, WorkingDays: working2025[i] });
+  }
+  for (let i=0;i<8;i++) {
+    const y = 2026, m = i+1;
+    months.push({ Id: null, MonthKey: `${y}-${String(m).padStart(2,"0")}`, Year: y, Month: m, WorkingDays: working2026[i] });
+  }
+  state.months = months;
+  log("Mesi default generati", { count: state.months.length });
+}
+
+async function loadAllFromSharePoint() {
+  const out = { projects: [], resources: [], allocations: [], months: [], holidays: [] };
+
+  try {
+    const items = await spGetListItems(CONFIG.lists.projects);
+    out.projects = items.map(normalizeProjectItem);
+    log("Progetti caricati da SharePoint", { count: out.projects.length });
+  } catch (e) {
+    log("Errore caricamento progetti da SharePoint", { error: String(e) }, "WARN");
+  }
+
+  try {
+    const items = await spGetListItems(CONFIG.lists.resources);
+    out.resources = items.map(normalizeResourceItem);
+    log("Risorse caricate da SharePoint", { count: out.resources.length });
+  } catch (e) {
+    log("Errore caricamento risorse da SharePoint", { error: String(e) }, "WARN");
+  }
+
+  try {
+    const items = await spGetListItems(CONFIG.lists.allocations);
+    out.allocations = items.map(normalizeAllocationItem);
+    log("Allocations caricate da SharePoint", { count: out.allocations.length });
+  } catch (e) {
+    log("Errore caricamento allocations da SharePoint", { error: String(e) }, "WARN");
+  }
+
+  try {
+    const items = await spGetListItems(CONFIG.lists.months);
+    out.months = items.map(normalizeMonthItem);
+    log("Mesi caricati da SharePoint", { count: out.months.length });
+  } catch (e) {
+    log("Errore caricamento mesi da SharePoint", { error: String(e) }, "WARN");
+  }
+
+  try {
+    const items = await spGetListItems(CONFIG.lists.holidays);
+    out.holidays = items.map(normalizeHolidayItem);
+    log("Holidays caricate da SharePoint", { count: out.holidays.length });
+  } catch (e) {
+    log("Errore caricamento holidays da SharePoint", { error: String(e) }, "WARN");
+  }
+
+  state.projects = out.projects;
+  state.resources = out.resources;
+  state.allocations = out.allocations;
+  state.months = out.months;
+  state.holidays = out.holidays;
+
+  await ensureDefaultMonths();
+  return out;
+}
+
+async function bootstrapData() {
+  try {
+    if (!state.online) throw new Error("Offline: bootstrap da cache");
+    await loadAllFromSharePoint();
+    saveToCache();
+    renderAll();
+    toast("Dati caricati da SharePoint", "success");
+  } catch (e) {
+    log("Bootstrap da SharePoint fallito, fallback cache", { error: String(e) }, "WARN");
+    loadFromCache();
+    await ensureDefaultMonths();
+    renderAll();
+    toast("Dati caricati da cache", "warn");
+  }
+}
+
+/** =========================
+ *  Rendering
+ *  ========================= */
+function setActiveTab(tabName) {
+  state.activeTab = tabName;
+  const tabs = ["progetti","pianificazione","risorse","configurazione","setup"];
+  for (const t of tabs) {
+    const btn = document.getElementById(`tabBtn_${t}`);
+    const panel = document.getElementById(`tabPanel_${t}`);
+    if (btn) {
+      if (t === tabName) {
+        btn.classList.add("tab-active");
+        btn.classList.remove("tab-inactive");
+      } else {
+        btn.classList.remove("tab-active");
+        btn.classList.add("tab-inactive");
+      }
+    }
+    if (panel) {
+      if (t === tabName) panel.classList.remove("hidden");
+      else panel.classList.add("hidden");
+    }
+  }
+  renderAll();
+}
+
+function renderAll() {
+  renderProjects();
+  renderResources();
+  renderPlanning();
+  renderHolidays();
+  renderListsStatus();
+}
+
+function projectMatchesFilters(p, search, status, priority, refit) {
+  const s = str(search).toLowerCase().trim();
+  const ref = str(refit).toLowerCase().trim();
+  if (s) {
+    const hay = [
+      p.Title, p.REY, p.REFIT, p.Status, p.Priority, p.RITM, p.Ticket, p.OwnerReply, p.RDA, p.CodiceGECO, p.COGE, p.Mail, p.Nota
+    ].map(x => str(x).toLowerCase()).join(" | ");
+    if (!hay.includes(s)) return false;
+  }
+  if (status && str(p.Status) !== str(status)) return false;
+  if (priority && str(p.Priority) !== str(priority)) return false;
+  if (ref && !str(p.REFIT).toLowerCase().includes(ref)) return false;
+  return true;
+}
+
+function renderProjects() {
+  const tbody = document.getElementById("projectsTbody");
+  if (!tbody) return;
+
+  const search = getVal("filterSearch");
+  const status = getVal("filterStatus");
+  const priority = getVal("filterPriority");
+  const refit = getVal("filterRefit");
+
+  const normalized = (state.projects || []).map(p => {
+    const cp = { ...p };
+    cp.Residui = calcResidui(cp);
+    return cp;
+  });
+
+  const filtered = normalized.filter(p => projectMatchesFilters(p, search, status, priority, refit));
+  filtered.sort((a,b) => str(a.Title).localeCompare(str(b.Title)));
+
+  const total = filtered.length;
+  const pageSize = state.projectsPageSize;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  state.projectsPage = Math.min(Math.max(1, state.projectsPage), totalPages);
+
+  const start = (state.projectsPage - 1) * pageSize;
+  const pageItems = filtered.slice(start, start + pageSize);
+
+  tbody.innerHTML = "";
+  for (const p of pageItems) {
+    const tr = document.createElement("tr");
+    tr.className = "border-t";
+    const cells = [
+      { html: `<div class="font-medium text-gray-900">${escapeHtml(p.Title)}</div><div class="text-xs text-gray-500">${escapeHtml(p.Nota || "")}</div>` },
+      { text: p.REY },
+      { text: p.REFIT },
+      { text: p.Status },
+      { text: p.Priority },
+      { text: p.RITM },
+      { text: p.Ticket },
+      { text: p.OwnerReply },
+      { text: fmtNum(p.EffortVenduti), align:"right" },
+      { text: fmtNum(p.EffortReali), align:"right" },
+      { text: fmtNum(p.Residui), align:"right" }
+    ];
+
+    for (const c of cells) {
+      const td = document.createElement("td");
+      td.className = "px-3 py-2 align-top " + (c.align === "right" ? "text-right" : "text-left");
+      if (c.html !== undefined) td.innerHTML = c.html;
+      else td.textContent = c.text ?? "";
+      tr.appendChild(td);
+    }
+
+    const tdAct = document.createElement("td");
+    tdAct.className = "px-3 py-2";
+    const btnEdit = document.createElement("button");
+    btnEdit.className = "px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium mr-2";
+    btnEdit.textContent = "Edit";
+    btnEdit.addEventListener("click", () => openProjectModal(p));
+
+    const btnDel = document.createElement("button");
+    btnDel.className = "px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-medium";
+    btnDel.textContent = "Delete";
+    btnDel.addEventListener("click", () => deleteProject(p));
+
+    tdAct.appendChild(btnEdit);
+    tdAct.appendChild(btnDel);
+    tr.appendChild(tdAct);
+
+    tbody.appendChild(tr);
+  }
+
+  const pageInfo = document.getElementById("projectsPageInfo");
+  const countInfo = document.getElementById("projectsCountInfo");
+  if (pageInfo) pageInfo.textContent = `Pagina ${state.projectsPage} / ${totalPages}`;
+  if (countInfo) countInfo.textContent = `${total} progetti (mostrati ${pageItems.length})`;
+}
+
+function renderResources() {
+  const tbody = document.getElementById("resourcesTbody");
+  if (!tbody) return;
+
+  const resources = (state.resources || []).slice().sort((a,b) => str(a.ResourceName).localeCompare(str(b.ResourceName)));
+  tbody.innerHTML = "";
+
+  for (const r of resources) {
+    const tr = document.createElement("tr");
+    tr.className = "border-t";
+
+    const sat = calcResourceSaturation(r.ResourceName);
+
+    const cells = [
+      { text: r.ResourceName },
+      { text: r.ResourceType },
+      { text: r.Mail },
+      { text: r.JSO },
+      { text: fmtNum(sat), align:"right" }
+    ];
+    for (const c of cells) {
+      const td = document.createElement("td");
+      td.className = "px-3 py-2 " + (c.align === "right" ? "text-right" : "text-left");
+      td.textContent = c.text ?? "";
+      tr.appendChild(td);
+    }
+
+    const tdAct = document.createElement("td");
+    tdAct.className = "px-3 py-2";
+    const btnEdit = document.createElement("button");
+    btnEdit.className = "px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium mr-2";
+    btnEdit.textContent = "Edit";
+    btnEdit.addEventListener("click", () => openResourceModal(r));
+
+    const btnDel = document.createElement("button");
+    btnDel.className = "px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-medium";
+    btnDel.textContent = "Delete";
+    btnDel.addEventListener("click", () => deleteResource(r));
+
+    tdAct.appendChild(btnEdit);
+    tdAct.appendChild(btnDel);
+    tr.appendChild(tdAct);
+
+    tbody.appendChild(tr);
+  }
+
+  const count = document.getElementById("resourcesCount");
+  if (count) count.textContent = String(resources.length);
+}
+
+function renderPlanning() {
+  const container = document.getElementById("planningContainer");
+  if (!container) return;
+
+  // months sorted
+  const months = (state.months || []).slice().sort((a,b) => str(a.MonthKey).localeCompare(str(b.MonthKey)));
+
+  // group allocations by project
+  const allocs = (state.allocations || []).slice();
+  const byProject = new Map();
+  for (const a of allocs) {
+    const pt = str(a.ProjectTitle).trim();
+    if (!pt) continue;
+    if (!byProject.has(pt)) byProject.set(pt, []);
+    byProject.get(pt).push(a);
+  }
+
+  const projectsWithAlloc = [];
+  for (const [pt, arr] of byProject.entries()) {
+    if (arr.length > 0) projectsWithAlloc.push(pt);
+  }
+  projectsWithAlloc.sort((a,b) => a.localeCompare(b));
+
+  container.innerHTML = "";
+  if (projectsWithAlloc.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "bg-white rounded shadow p-4 text-sm text-gray-600";
+    empty.textContent = "Nessuna pianificazione presente. Importa da Excel o crea allocazioni modificando le celle (allocazione verrà creata al blur).";
+    container.appendChild(empty);
+    return;
+  }
+
+  const resourceNames = (state.resources || []).map(r => r.ResourceName);
+
+  for (const projectTitle of projectsWithAlloc) {
+    const card = document.createElement("div");
+    card.className = "bg-white rounded shadow";
+
+    const header = document.createElement("div");
+    header.className = "px-4 py-3 border-b flex items-center justify-between gap-3";
+    header.innerHTML = `<div class="font-semibold">${escapeHtml(projectTitle)}</div>
+                        <div class="text-xs text-gray-500">Celle editabili • valori numerici</div>`;
+    card.appendChild(header);
+
+    const wrap = document.createElement("div");
+    wrap.className = "overflow-x-auto";
+
+    const table = document.createElement("table");
+    table.className = "min-w-full text-sm";
+
+    const thead = document.createElement("thead");
+    thead.className = "bg-gray-50 text-gray-700";
+    const trh = document.createElement("tr");
+    const th0 = document.createElement("th");
+    th0.className = "px-3 py-2 text-left sticky left-0 bg-gray-50";
+    th0.textContent = "Risorsa";
+    trh.appendChild(th0);
+
+    for (const m of months) {
+      const th = document.createElement("th");
+      th.className = "px-3 py-2 text-right";
+      th.textContent = monthLabel(m);
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    const rowsResources = resourceNames.length ? resourceNames.slice().sort((a,b)=>a.localeCompare(b)) : inferResourcesFromAllocations(projectTitle);
+    for (const rn of rowsResources) {
+      const tr = document.createElement("tr");
+      tr.className = "border-t";
+      const tdName = document.createElement("td");
+      tdName.className = "px-3 py-2 font-medium sticky left-0 bg-white whitespace-nowrap";
+      tdName.textContent = rn;
+      tr.appendChild(tdName);
+
+      for (const m of months) {
+        const td = document.createElement("td");
+        td.className = "px-2 py-1 text-right grid-cell";
+        const val = getAllocationValue(projectTitle, rn, m.MonthKey);
+        const div = document.createElement("div");
+        div.className = "contenteditable-cell px-2 py-1 rounded hover:bg-blue-50";
+        div.contentEditable = "true";
+        div.dataset.project = projectTitle;
+        div.dataset.resource = rn;
+        div.dataset.month = m.MonthKey;
+        div.textContent = val === 0 ? "" : String(val);
+        div.addEventListener("blur", async (ev) => {
+          const el = ev.currentTarget;
+          const v = num(el.textContent.trim());
+          await upsertAllocation(el.dataset.project, el.dataset.resource, el.dataset.month, v);
+          el.textContent = v === 0 ? "" : String(v);
+          renderResources(); // update saturation
+        });
+        div.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            ev.currentTarget.blur();
+          }
+          if (ev.key === "Escape") {
+            ev.preventDefault();
+            // restore value
+            const cur = getAllocationValue(projectTitle, rn, m.MonthKey);
+            ev.currentTarget.textContent = cur === 0 ? "" : String(cur);
+            ev.currentTarget.blur();
+          }
+        });
+        td.appendChild(div);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    card.appendChild(wrap);
+    container.appendChild(card);
+  }
+}
+
+function renderHolidays() {
+  const host = document.getElementById("holidaysList");
+  if (!host) return;
+  const hol = (state.holidays || []).slice().sort((a,b) => (str(a.ResourceName)+str(a.Date)).localeCompare(str(b.ResourceName)+str(b.Date)));
+  host.innerHTML = "";
+  if (hol.length === 0) {
+    const e = document.createElement("div");
+    e.className = "text-sm text-gray-600";
+    e.textContent = "Nessuna ferie presente.";
+    host.appendChild(e);
+    return;
+  }
+  for (const h of hol) {
+    const row = document.createElement("div");
+    row.className = "flex items-start justify-between gap-2 border rounded px-3 py-2";
+    const left = document.createElement("div");
+    left.innerHTML = `<div class="text-sm font-medium">${escapeHtml(h.ResourceName || "—")}</div>
+                      <div class="text-xs text-gray-600">${escapeHtml(h.Date || "—")} ${h.Note ? "• " + escapeHtml(h.Note) : ""}</div>`;
+    const right = document.createElement("div");
+    right.className = "flex gap-2";
+    const btnDel = document.createElement("button");
+    btnDel.className = "px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-medium";
+    btnDel.textContent = "Delete";
+    btnDel.addEventListener("click", () => deleteHoliday(h));
+    right.appendChild(btnDel);
+    row.appendChild(left);
+    row.appendChild(right);
+    host.appendChild(row);
+  }
+}
+
+function renderListsStatus() {
+  const host = document.getElementById("listsStatus");
+  if (!host) return;
+  const status = state.listsStatus;
+  host.innerHTML = "";
+  const listTitles = Object.values(CONFIG.lists);
+  for (const title of listTitles) {
+    const ok = status ? !!status[title] : null;
+    const item = document.createElement("div");
+    item.className = "flex items-center justify-between border rounded px-3 py-2";
+    const left = document.createElement("div");
+    left.innerHTML = `<div class="font-medium">${escapeHtml(title)}</div>
+                      <div class="text-xs text-gray-500">List</div>`;
+    const right = document.createElement("div");
+    if (ok === null) {
+      right.innerHTML = `<span class="text-gray-500 text-sm">—</span>`;
+    } else if (ok) {
+      right.innerHTML = `<span class="text-green-700 font-semibold">✓ OK</span>`;
+    } else {
+      right.innerHTML = `<span class="text-red-700 font-semibold">✗ MISSING</span>`;
+    }
+    item.appendChild(left);
+    item.appendChild(right);
+    host.appendChild(item);
+  }
+}
+
+/** =========================
+ *  Helpers for rendering/planning
+ *  ========================= */
+function escapeHtml(s) {
+  return str(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function fmtNum(n) {
+  const x = num(n);
+  if (!Number.isFinite(x)) return "";
+  if (Math.abs(x) < 0.00001) return "0";
+  const s = String(Math.round(x * 100) / 100);
+  return s;
+}
+
+function monthLabel(m) {
+  const monthNames = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+  const mm = num(m.Month);
+  const yy = num(m.Year);
+  const label = (mm>=1 && mm<=12) ? monthNames[mm-1] : str(m.MonthKey);
+  const shortYear = yy ? String(yy).slice(-2) : "";
+  return shortYear ? `${label}${shortYear}` : label;
+}
+
+function inferResourcesFromAllocations(projectTitle) {
+  const set = new Set();
+  for (const a of (state.allocations || [])) {
+    if (str(a.ProjectTitle) === str(projectTitle) && str(a.ResourceName).trim()) set.add(str(a.ResourceName));
+  }
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+
+function getAllocationValue(projectTitle, resourceName, monthKey) {
+  for (const a of (state.allocations || [])) {
+    if (str(a.ProjectTitle) === str(projectTitle) && str(a.ResourceName) === str(resourceName) && str(a.MonthKey) === str(monthKey)) {
+      return num(a.Value);
+    }
+  }
+  return 0;
+}
+
+function calcResourceSaturation(resourceName) {
+  // Sum of allocations across all projects/months for the resource
+  const total = (state.allocations || []).reduce((acc, a) => acc + (str(a.ResourceName) === str(resourceName) ? num(a.Value) : 0), 0);
+  return Math.round(total * 100) / 100;
+}
+
+/** =========================
+ *  CRUD & modal actions
+ *  ========================= */
+function openProjectModal(project) {
+  const modal = document.getElementById("projectModal");
+  if (!modal) return;
+  const isNew = !project;
+  document.getElementById("projectModalTitle").textContent = isNew ? "Nuovo progetto" : "Modifica progetto";
+
+  const p = project ? { ...project } : {
+    Id: null,
+    Title: "",
+    REY: "",
+    REFIT: "",
+    Status: "",
+    Priority: "",
+    RITM: "",
+    Ticket: "",
+    OwnerReply: "",
+    EffortVenduti: 0,
+    EffortReali: 0,
+    EffortSviluppo: 0,
+    EffortCollSupp: 0,
+    DataInvioStima: null,
+    DataApprovazione: null,
+    DataRilascioCollaudo: null,
+    DataFineUAT: null,
+    DataRilascioProd: null,
+    RDA: "",
+    ValoreRDA: 0,
+    CodiceGECO: "",
+    COGE: "",
+    Mail: "",
+    Nota: "",
+    JSOCodeCopertura: "",
+    Residui: 0
+  };
+
+  setVal("p_Id", p.Id || "");
+  setVal("p_Title", p.Title);
+  setVal("p_REY", p.REY);
+  setVal("p_REFIT", p.REFIT);
+  setVal("p_Status", p.Status);
+  setVal("p_Priority", p.Priority);
+  setVal("p_RITM", p.RITM);
+  setVal("p_Ticket", p.Ticket);
+  setVal("p_OwnerReply", p.OwnerReply);
+
+  setVal("p_DataInvioStima", toIsoDateOrNull(p.DataInvioStima) || "");
+  setVal("p_DataApprovazione", toIsoDateOrNull(p.DataApprovazione) || "");
+  setVal("p_DataRilascioCollaudo", toIsoDateOrNull(p.DataRilascioCollaudo) || "");
+  setVal("p_DataFineUAT", toIsoDateOrNull(p.DataFineUAT) || "");
+  setVal("p_DataRilascioProd", toIsoDateOrNull(p.DataRilascioProd) || "");
+
+  setVal("p_RDA", p.RDA);
+  setVal("p_ValoreRDA", p.ValoreRDA);
+  setVal("p_CodiceGECO", p.CodiceGECO);
+  setVal("p_COGE", p.COGE);
+  setVal("p_Mail", p.Mail);
+  setVal("p_JSOCodeCopertura", p.JSOCodeCopertura);
+
+  setVal("p_EffortVenduti", p.EffortVenduti);
+  setVal("p_EffortReali", p.EffortReali);
+  setVal("p_EffortSviluppo", p.EffortSviluppo);
+  setVal("p_EffortCollSupp", p.EffortCollSupp);
+
+  const residui = calcResidui(p);
+  setVal("p_Residui", residui);
+
+  setVal("p_Nota", p.Nota);
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+}
+
+function closeProjectModal() {
+  const modal = document.getElementById("projectModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+async function saveProjectFromModal() {
+  const id = getVal("p_Id");
+  const p = {
+    Id: id ? Number(id) : null,
+    Title: str(getVal("p_Title")).trim(),
+    REY: str(getVal("p_REY")).trim(),
+    REFIT: str(getVal("p_REFIT")).trim(),
+    Status: str(getVal("p_Status")).trim(),
+    Priority: str(getVal("p_Priority")).trim(),
+    RITM: str(getVal("p_RITM")).trim(),
+    Ticket: str(getVal("p_Ticket")).trim(),
+    OwnerReply: str(getVal("p_OwnerReply")).trim(),
+    EffortVenduti: num(getVal("p_EffortVenduti")),
+    EffortReali: num(getVal("p_EffortReali")),
+    EffortSviluppo: num(getVal("p_EffortSviluppo")),
+    EffortCollSupp: num(getVal("p_EffortCollSupp")),
+    DataInvioStima: getVal("p_DataInvioStima") || null,
+    DataApprovazione: getVal("p_DataApprovazione") || null,
+    DataRilascioCollaudo: getVal("p_DataRilascioCollaudo") || null,
+    DataFineUAT: getVal("p_DataFineUAT") || null,
+    DataRilascioProd: getVal("p_DataRilascioProd") || null,
+    RDA: str(getVal("p_RDA")).trim(),
+    ValoreRDA: num(getVal("p_ValoreRDA")),
+    CodiceGECO: str(getVal("p_CodiceGECO")).trim(),
+    COGE: str(getVal("p_COGE")).trim(),
+    Mail: str(getVal("p_Mail")).trim(),
+    Nota: str(getVal("p_Nota")).trim(),
+    JSOCodeCopertura: str(getVal("p_JSOCodeCopertura")).trim(),
+    Residui: 0
+  };
+  if (!p.Title) {
+    toast("Inserire il nome del progetto", "warn");
+    return;
+  }
+  p.Residui = calcResidui(p);
+  setVal("p_Residui", p.Residui);
+
+  // Save in state
+  if (p.Id) {
+    const idx = state.projects.findIndex(x => Number(x.Id) === Number(p.Id));
+    if (idx >= 0) state.projects[idx] = p;
+    else state.projects.push(p);
+  } else {
+    // local id placeholder
+    p.Id = Date.now();
+    state.projects.push(p);
+  }
+
+  // Save to SharePoint (Title only)
+  try {
+    if (state.online && state.account) {
+      const payload = projectToSpPayload(p);
+      if (id && !String(id).startsWith("local_")) {
+        await spUpdateItem(CONFIG.lists.projects, Number(id), payload);
+      } else {
+        const created = await spCreateItem(CONFIG.lists.projects, payload);
+        if (created && created.Id) {
+          // update ID to SP ID
+          const localIdx = state.projects.findIndex(x => Number(x.Id) === Number(p.Id));
+          if (localIdx >= 0) state.projects[localIdx].Id = created.Id;
+        }
+      }
+      toast("Progetto salvato su SharePoint (Title)", "success");
+    } else {
+      toast("Salvato in locale (offline/non loggato)", "warn");
+    }
+  } catch (e) {
+    log("Errore salvataggio progetto su SharePoint", { error: String(e) }, "WARN");
+    toast("Errore salvataggio su SharePoint (salvato in cache)", "warn");
+  }
+
+  saveToCache();
+  closeProjectModal();
+  renderAll();
+}
+
+async function deleteProject(project) {
+  if (!project) return;
+  const ok = confirm(`Eliminare il progetto "${project.Title}"?`);
+  if (!ok) return;
+
+  state.projects = state.projects.filter(p => Number(p.Id) !== Number(project.Id));
+  // also delete allocations for this project
+  const before = state.allocations.length;
+  state.allocations = state.allocations.filter(a => str(a.ProjectTitle) !== str(project.Title));
+  const removedAlloc = before - state.allocations.length;
+
+  try {
+    if (state.online && state.account && project.Id) {
+      await spDeleteItem(CONFIG.lists.projects, Number(project.Id));
+      toast("Progetto eliminato da SharePoint", "success");
+    }
+  } catch (e) {
+    log("Errore delete progetto su SharePoint", { error: String(e) }, "WARN");
+    toast("Errore delete su SharePoint (rimosso in locale)", "warn");
+  }
+
+  saveToCache();
+  renderAll();
+  if (removedAlloc) toast(`Rimosse ${removedAlloc} allocazioni collegate`, "info");
+}
+
+function openResourceModal(resource) {
+  const modal = document.getElementById("resourceModal");
+  if (!modal) return;
+  const isNew = !resource;
+  document.getElementById("resourceModalTitle").textContent = isNew ? "Nuova risorsa" : "Modifica risorsa";
+
+  const r = resource ? { ...resource } : { Id: null, ResourceName: "", ResourceType: "INT", Mail: "", JSO: "" };
+  setVal("r_Id", r.Id || "");
+  setVal("r_ResourceName", r.ResourceName);
+  setVal("r_ResourceType", r.ResourceType);
+  setVal("r_Mail", r.Mail);
+  setVal("r_JSO", r.JSO);
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+}
+
+function closeResourceModal() {
+  const modal = document.getElementById("resourceModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+async function saveResourceFromModal() {
+  const id = getVal("r_Id");
+  const r = {
+    Id: id ? Number(id) : null,
+    ResourceName: str(getVal("r_ResourceName")).trim(),
+    ResourceType: str(getVal("r_ResourceType")).trim() === "EXT" ? "EXT" : "INT",
+    Mail: str(getVal("r_Mail")).trim(),
+    JSO: str(getVal("r_JSO")).trim()
+  };
+  if (!r.ResourceName) {
+    toast("Inserire il nome della risorsa", "warn");
+    return;
+  }
+
+  if (r.Id) {
+    const idx = state.resources.findIndex(x => Number(x.Id) === Number(r.Id));
+    if (idx >= 0) state.resources[idx] = r;
+    else state.resources.push(r);
+  } else {
+    r.Id = Date.now();
+    state.resources.push(r);
+  }
+
+  try {
+    if (state.online && state.account) {
+      const payload = resourceToSpPayload(r);
+      if (id) {
+        await spUpdateItem(CONFIG.lists.resources, Number(id), payload);
+      } else {
+        const created = await spCreateItem(CONFIG.lists.resources, payload);
+        if (created && created.Id) {
+          const localIdx = state.resources.findIndex(x => Number(x.Id) === Number(r.Id));
+          if (localIdx >= 0) state.resources[localIdx].Id = created.Id;
+        }
+      }
+      toast("Risorsa salvata su SharePoint (Title)", "success");
+    } else {
+      toast("Risorsa salvata in locale", "warn");
+    }
+  } catch (e) {
+    log("Errore salvataggio risorsa su SharePoint", { error: String(e) }, "WARN");
+    toast("Errore salvataggio su SharePoint (salvato in cache)", "warn");
+  }
+
+  saveToCache();
+  closeResourceModal();
+  renderAll();
+}
+
+async function deleteResource(resource) {
+  if (!resource) return;
+  const ok = confirm(`Eliminare la risorsa "${resource.ResourceName}"?`);
+  if (!ok) return;
+
+  state.resources = state.resources.filter(r => Number(r.Id) !== Number(resource.Id));
+  // delete allocations for resource
+  const before = state.allocations.length;
+  state.allocations = state.allocations.filter(a => str(a.ResourceName) !== str(resource.ResourceName));
+  const removedAlloc = before - state.allocations.length;
+
+  try {
+    if (state.online && state.account && resource.Id) {
+      await spDeleteItem(CONFIG.lists.resources, Number(resource.Id));
+      toast("Risorsa eliminata da SharePoint", "success");
+    }
+  } catch (e) {
+    log("Errore delete risorsa su SharePoint", { error: String(e) }, "WARN");
+    toast("Errore delete su SharePoint (rimosso in locale)", "warn");
+  }
+
+  saveToCache();
+  renderAll();
+  if (removedAlloc) toast(`Rimosse ${removedAlloc} allocazioni collegate`, "info");
+}
+
+function openMonthModal(month) {
+  const modal = document.getElementById("monthModal");
+  if (!modal) return;
+  const isNew = !month;
+  document.getElementById("monthModalTitle").textContent = isNew ? "Nuovo mese" : "Modifica mese";
+
+  const m = month ? { ...month } : { Id: null, Year: 2025, Month: 1, WorkingDays: 22, MonthKey: "2025-01" };
+  setVal("m_Id", m.Id || "");
+  setVal("m_Year", m.Year || "");
+  setVal("m_Month", m.Month || "");
+  setVal("m_WorkingDays", m.WorkingDays || "");
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+}
+
+function closeMonthModal() {
+  const modal = document.getElementById("monthModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+async function saveMonthFromModal() {
+  const id = getVal("m_Id");
+  const year = num(getVal("m_Year"));
+  const month = num(getVal("m_Month"));
+  const wd = num(getVal("m_WorkingDays"));
+  if (!year || month < 1 || month > 12) {
+    toast("Anno/mese non validi", "warn");
+    return;
+  }
+  const key = `${year}-${String(month).padStart(2,"0")}`;
+  const m = { Id: id ? Number(id) : null, Year: year, Month: month, WorkingDays: wd, MonthKey: key };
+
+  // upsert in state by MonthKey
+  const idx = state.months.findIndex(x => str(x.MonthKey) === key);
+  if (idx >= 0) state.months[idx] = { ...state.months[idx], ...m };
+  else state.months.push(m);
+
+  try {
+    if (state.online && state.account) {
+      const payload = monthToSpPayload(m);
+      if (m.Id) await spUpdateItem(CONFIG.lists.months, Number(m.Id), payload);
+      else {
+        const created = await spCreateItem(CONFIG.lists.months, payload);
+        if (created && created.Id) {
+          const idx2 = state.months.findIndex(x => str(x.MonthKey) === key);
+          if (idx2 >= 0) state.months[idx2].Id = created.Id;
+        }
+      }
+      toast("Mese salvato su SharePoint (Title)", "success");
+    } else {
+      toast("Mese salvato in locale", "warn");
+    }
+  } catch (e) {
+    log("Errore salvataggio mese su SharePoint", { error: String(e) }, "WARN");
+    toast("Errore salvataggio su SharePoint (salvato in cache)", "warn");
+  }
+
+  saveToCache();
+  closeMonthModal();
+  renderAll();
+}
+
+async function upsertAllocation(projectTitle, resourceName, monthKey, value) {
+  const pt = str(projectTitle).trim();
+  const rn = str(resourceName).trim();
+  const mk = str(monthKey).trim();
+  if (!pt || !rn || !mk) return;
+
+  let a = (state.allocations || []).find(x => str(x.ProjectTitle)===pt && str(x.ResourceName)===rn && str(x.MonthKey)===mk);
+  if (!a) {
+    a = { Id: null, ProjectTitle: pt, ResourceName: rn, MonthKey: mk, Value: 0 };
+    state.allocations.push(a);
+  }
+  a.Value = num(value);
+
+  // if value is 0, keep record but it's fine; optionally could remove
+  try {
+    if (state.online && state.account) {
+      const payload = allocationToSpPayload(a);
+      if (a.Id) {
+        await spUpdateItem(CONFIG.lists.allocations, Number(a.Id), payload);
+      } else {
+        const created = await spCreateItem(CONFIG.lists.allocations, payload);
+        if (created && created.Id) a.Id = created.Id;
+      }
+    }
+  } catch (e) {
+    log("Errore upsert allocation su SharePoint (ok)", { error: String(e), allocation: a }, "WARN");
+  }
+
+  saveToCache();
+}
+
+/** =========================
+ *  Excel Import/Export (Configurazione)
+ *  ========================= */
+async function importExcel(file) {
+  if (!file) return;
+  try {
+    log("Import Excel avviato", { name: file.name, size: file.size });
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: "array" });
+    log("Fogli Excel trovati", wb.SheetNames);
+
+    // PROJECTS
+    if (wb.Sheets["PROJECTS"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["PROJECTS"], { header: 1 });
+      const headers = (rows[0] || []).map(h => str(h).trim());
+      const map = {};
+      headers.forEach((h, idx) => map[h.toLowerCase()] = idx);
+
+      const projects = [];
+      for (let i=1;i<rows.length;i++) {
+        const row = rows[i] || [];
+        const title = str(row[map["title"]] ?? row[map["nome"]] ?? row[0]).trim();
+        if (!title) continue;
+        const p = {
+          Id: null,
+          Title: title,
+          REY: str(row[map["rey"]] ?? "").trim(),
+          REFIT: str(row[map["refit"]] ?? row[map["ref it"]] ?? "").trim(),
+          Status: str(row[map["status"]] ?? "").trim(),
+          Priority: str(row[map["priority"]] ?? "").trim(),
+          RITM: str(row[map["ritm"]] ?? "").trim(),
+          Ticket: str(row[map["ticket"]] ?? "").trim(),
+          OwnerReply: str(row[map["ownerreply"]] ?? row[map["owner reply"]] ?? "").trim(),
+          EffortVenduti: num(row[map["effortvenduti"]] ?? row[map["effort venduti"]] ?? ""),
+          EffortReali: num(row[map["effortreali"]] ?? row[map["effort reali"]] ?? ""),
+          EffortSviluppo: num(row[map["effortsviluppo"]] ?? row[map["effort sviluppo"]] ?? ""),
+          EffortCollSupp: num(row[map["effortcollsupp"]] ?? row[map["effort coll/supp"]] ?? ""),
+          DataInvioStima: toIsoDateOrNull(row[map["datainviostima"]] ?? row[map["data invio stima"]] ?? ""),
+          DataApprovazione: toIsoDateOrNull(row[map["dataapprovazione"]] ?? row[map["data approvazione"]] ?? ""),
+          DataRilascioCollaudo: toIsoDateOrNull(row[map["datarilasciocollaudo"]] ?? row[map["data rilascio collaudo"]] ?? ""),
+          DataFineUAT: toIsoDateOrNull(row[map["datafineuat"]] ?? row[map["data fine uat"]] ?? ""),
+          DataRilascioProd: toIsoDateOrNull(row[map["datarilascioprod"]] ?? row[map["data rilascio prod"]] ?? ""),
+          RDA: str(row[map["rda"]] ?? "").trim(),
+          ValoreRDA: num(row[map["valor erda"]] ?? row[map["valorerda"]] ?? row[map["valore rda"]] ?? ""),
+          CodiceGECO: str(row[map["codicegeco"]] ?? row[map["codice geco"]] ?? "").trim(),
+          COGE: str(row[map["coge"]] ?? "").trim(),
+          Mail: str(row[map["mail"]] ?? "").trim(),
+          Nota: str(row[map["nota"]] ?? "").trim(),
+          JSOCodeCopertura: str(row[map["jsocodecopertura"]] ?? row[map["jso code copertura"]] ?? "").trim(),
+          Residui: 0
+        };
+        p.Residui = calcResidui(p);
+        projects.push(p);
+      }
+      state.projects = projects;
+      log("Progetti importati", { count: projects.length });
+    }
+
+    // RESOURCESNEW
+    if (wb.Sheets["RESOURCESNEW"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["RESOURCESNEW"], { header: 1 });
+      const resources = [];
+      for (let r=4; r<rows.length; r++) {
+        const row = rows[r] || [];
+        const name = str(row[1] ?? "").trim();
+        const type = str(row[2] ?? "").trim().toUpperCase();
+        if (!name) continue;
+        if (name.toLowerCase() === "nome" || name.toLowerCase().includes("resource")) continue;
+        resources.push({
+          Id: null,
+          ResourceName: name,
+          ResourceType: type === "EXT" ? "EXT" : "INT",
+          Mail: "",
+          JSO: ""
+        });
+      }
+      state.resources = resources;
+      log("Risorse importate", { count: resources.length });
+    }
+
+    // PLANNINGNEW
+    if (wb.Sheets["PLANNINGNEW"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["PLANNINGNEW"], { header: 1 });
+      const alloc = [];
+      // Map months columns F onwards based on fixed mapping described for migration
+      const monthMap = buildPlanningMonthMap();
+      for (let i=3; i<rows.length; i++) {
+        const row = rows[i] || [];
+        const projectName = str(row[1] ?? row[0] ?? "").trim();
+        const resourceName = str(row[2] ?? "").trim();
+        if (!projectName || !resourceName) continue;
+
+        for (const [colIdx, monthKey] of monthMap.entries()) {
+          const v = num(row[colIdx] ?? 0);
+          if (v === 0) continue;
+          alloc.push({ Id: null, ProjectTitle: projectName, ResourceName: resourceName, MonthKey: monthKey, Value: v });
+        }
+      }
+      state.allocations = alloc;
+      log("Allocazioni importate", { count: alloc.length });
+
+      // months working days row 2
+      const wdRow = rows[2] || [];
+      const months = [];
+      for (const [colIdx, monthKey] of monthMap.entries()) {
+        const wd = num(wdRow[colIdx] ?? 0);
+        const [y, mm] = monthKey.split("-");
+        months.push({ Id: null, MonthKey: monthKey, Year: num(y), Month: num(mm), WorkingDays: wd || 0 });
+      }
+      // merge with defaults, prefer imported working days when > 0
+      await ensureDefaultMonths();
+      const merged = new Map(state.months.map(m => [m.MonthKey, { ...m }]));
+      for (const m of months) {
+        const ex = merged.get(m.MonthKey);
+        if (!ex) merged.set(m.MonthKey, m);
+        else merged.set(m.MonthKey, { ...ex, WorkingDays: m.WorkingDays || ex.WorkingDays });
+      }
+      state.months = Array.from(merged.values()).sort((a,b)=>str(a.MonthKey).localeCompare(str(b.MonthKey)));
+      log("Mesi aggiornati (working days)", { count: state.months.length });
+    }
+
+    saveToCache();
+    renderAll();
+    toast("Import Excel completato", "success");
+  } catch (e) {
+    log("Import Excel fallito", { error: String(e) }, "ERROR");
+    toast("Import Excel fallito", "error");
+  }
+}
+
+function exportExcel() {
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Projects sheet
+    const projects = (state.projects || []).map(p => ({
+      Title: p.Title,
+      REY: p.REY,
+      REFIT: p.REFIT,
+      Status: p.Status,
+      Priority: p.Priority,
+      RITM: p.RITM,
+      Ticket: p.Ticket,
+      OwnerReply: p.OwnerReply,
+      EffortVenduti: num(p.EffortVenduti),
+      EffortReali: num(p.EffortReali),
+      Residui: calcResidui(p),
+      EffortSviluppo: num(p.EffortSviluppo),
+      EffortCollSupp: num(p.EffortCollSupp),
+      DataInvioStima: p.DataInvioStima,
+      DataApprovazione: p.DataApprovazione,
+      DataRilascioCollaudo: p.DataRilascioCollaudo,
+      DataFineUAT: p.DataFineUAT,
+      DataRilascioProd: p.DataRilascioProd,
+      RDA: p.RDA,
+      ValoreRDA: num(p.ValoreRDA),
+      CodiceGECO: p.CodiceGECO,
+      COGE: p.COGE,
+      Mail: p.Mail,
+      Nota: p.Nota,
+      JSOCodeCopertura: p.JSOCodeCopertura
+    }));
+    const wsP = XLSX.utils.json_to_sheet(projects);
+    XLSX.utils.book_append_sheet(wb, wsP, sanitizeSheetName("PROJECTS"));
+
+    // Resources sheet
+    const resources = (state.resources || []).map(r => ({
+      ResourceName: r.ResourceName,
+      ResourceType: r.ResourceType,
+      Mail: r.Mail,
+      JSO: r.JSO,
+      Saturazione: calcResourceSaturation(r.ResourceName)
+    }));
+    const wsR = XLSX.utils.json_to_sheet(resources);
+    XLSX.utils.book_append_sheet(wb, wsR, sanitizeSheetName("RESOURCES"));
+
+    // Allocations sheet (normalized)
+    const allocations = (state.allocations || []).map(a => ({
+      ProjectTitle: a.ProjectTitle,
+      ResourceName: a.ResourceName,
+      MonthKey: a.MonthKey,
+      Value: num(a.Value)
+    }));
+    const wsA = XLSX.utils.json_to_sheet(allocations);
+    XLSX.utils.book_append_sheet(wb, wsA, sanitizeSheetName("ALLOCATIONS"));
+
+    // Months sheet
+    const months = (state.months || []).map(m => ({
+      MonthKey: m.MonthKey,
+      Year: num(m.Year),
+      Month: num(m.Month),
+      WorkingDays: num(m.WorkingDays)
+    }));
+    const wsM = XLSX.utils.json_to_sheet(months);
+    XLSX.utils.book_append_sheet(wb, wsM, sanitizeSheetName("MONTHS"));
+
+    // Holidays sheet
+    const holidays = (state.holidays || []).map(h => ({
+      ResourceName: h.ResourceName,
+      Date: h.Date,
+      Note: h.Note
+    }));
+    const wsH = XLSX.utils.json_to_sheet(holidays);
+    XLSX.utils.book_append_sheet(wb, wsH, sanitizeSheetName("HOLIDAYS"));
+
+    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    downloadBlob("B5INC_Planning_Tool_Export.xlsx", new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    toast("Export Excel completato", "success");
+  } catch (e) {
+    log("Export Excel fallito", { error: String(e) }, "ERROR");
+    toast("Export Excel fallito", "error");
+  }
+}
+
+/** =========================
+ *  Backup/Restore JSON
+ *  ========================= */
+function backupJson() {
+  const payload = {
+    exportedAt: nowIso(),
+    projects: state.projects,
+    resources: state.resources,
+    allocations: state.allocations,
+    months: state.months,
+    holidays: state.holidays
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  downloadBlob("B5INC_Planning_Tool_Backup.json", blob);
+  toast("Backup JSON creato", "success");
+}
+
+async function restoreJson(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    state.projects = Array.isArray(payload.projects) ? payload.projects : [];
+    state.resources = Array.isArray(payload.resources) ? payload.resources : [];
+    state.allocations = Array.isArray(payload.allocations) ? payload.allocations : [];
+    state.months = Array.isArray(payload.months) ? payload.months : [];
+    state.holidays = Array.isArray(payload.holidays) ? payload.holidays : [];
+    await ensureDefaultMonths();
+    saveToCache();
+    renderAll();
+    toast("Restore JSON completato", "success");
+    log("Restore JSON completato", { exportedAt: payload.exportedAt || null });
+  } catch (e) {
+    log("Restore JSON fallito", { error: String(e) }, "ERROR");
+    toast("Restore JSON fallito", "error");
+  }
+}
+
+/** =========================
+ *  Migration (Setup tab)
+ *  ========================= */
+function buildPlanningMonthMap() {
+  // Month columns map: F(5)=GEN25 ... Q(16)=DIC25, R(17)=GEN26 ... Y(24)=AGO26
+  const map = new Map();
+  const months25 = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+  const months26 = ["01","02","03","04","05","06","07","08"];
+  // F=5 .. Q=16
+  for (let i=0;i<12;i++) {
+    map.set(5 + i, `2025-${months25[i]}`);
+  }
+  // R=17 .. Y=24
+  for (let i=0;i<8;i++) {
+    map.set(17 + i, `2026-${months26[i]}`);
+  }
+  return map;
+}
+
+async function migrateExcelToSharePoint(file) {
+  if (!file) return;
+  try {
+    log("=== INIZIO MIGRAZIONE EXCEL → SHAREPOINT ===");
+    log("File selezionato", { name: file.name, size: file.size });
+
+    if (!state.account) {
+      toast("Eseguire login prima della migrazione", "warn");
+      log("Migrazione interrotta: utente non autenticato", null, "WARN");
+      return;
+    }
+    if (!state.online) {
+      toast("Sei offline: connettiti per migrare su SharePoint", "warn");
+      log("Migrazione interrotta: offline", null, "WARN");
+      return;
+    }
+
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: "array" });
+    log("Sheet names trovati", wb.SheetNames);
+
+    // 6. Parse PROJECTS
+    const projects = [];
+    if (wb.Sheets["PROJECTS"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["PROJECTS"], { header: 1 });
+      const headers = (rows[0] || []).map(h => str(h).trim());
+      const idx = {};
+      headers.forEach((h, i) => idx[h.toLowerCase()] = i);
+
+      for (let r=1;r<rows.length;r++) {
+        const row = rows[r] || [];
+        const title = str(row[idx["title"]] ?? row[idx["nome"]] ?? row[0] ?? "").trim();
+        if (!title) continue;
+        const p = {
+          Id: null,
+          Title: title,
+          REY: str(row[idx["rey"]] ?? "").trim(),
+          REFIT: str(row[idx["refit"]] ?? row[idx["ref it"]] ?? "").trim(),
+          Status: str(row[idx["status"]] ?? "").trim(),
+          Priority: str(row[idx["priority"]] ?? "").trim(),
+          RITM: str(row[idx["ritm"]] ?? "").trim(),
+          Ticket: str(row[idx["ticket"]] ?? "").trim(),
+          OwnerReply: str(row[idx["ownerreply"]] ?? row[idx["owner reply"]] ?? "").trim(),
+          EffortVenduti: num(row[idx["effortvenduti"]] ?? row[idx["effort venduti"]] ?? ""),
+          EffortReali: num(row[idx["effortreali"]] ?? row[idx["effort reali"]] ?? ""),
+          Nota: str(row[idx["nota"]] ?? "").trim()
+        };
+        p.Residui = calcResidui(p);
+        projects.push(p);
+      }
+    }
+    log("Progetti validi", { count: projects.length });
+
+    // 7. Parse RESOURCESNEW
+    const resources = [];
+    if (wb.Sheets["RESOURCESNEW"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["RESOURCESNEW"], { header: 1 });
+      for (let r=4; r<rows.length; r++) {
+        const row = rows[r] || [];
+        const name = str(row[1] ?? "").trim();
+        const type = str(row[2] ?? "").trim().toUpperCase();
+        if (!name) continue;
+        if (name.toLowerCase() === "nome") continue;
+        resources.push({ Id: null, ResourceName: name, ResourceType: type === "EXT" ? "EXT" : "INT", Mail: "", JSO: "" });
+      }
+    }
+    log("Risorse", { count: resources.length });
+
+    // 8. Parse PLANNINGNEW
+    const allocations = [];
+    const months = [];
+    if (wb.Sheets["PLANNINGNEW"]) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets["PLANNINGNEW"], { header: 1 });
+      const monthMap = buildPlanningMonthMap();
+
+      // working days row 2 (0-indexed)
+      const wdRow = rows[2] || [];
+      for (const [colIdx, monthKey] of monthMap.entries()) {
+        const wd = num(wdRow[colIdx] ?? 0);
+        const [y, mm] = monthKey.split("-");
+        months.push({ Id: null, MonthKey: monthKey, Year: num(y), Month: num(mm), WorkingDays: wd || 0 });
+      }
+
+      // data rows: col A/B project info, col C resource, cols F onwards values
+      for (let r=3; r<rows.length; r++) {
+        const row = rows[r] || [];
+        const projectName = str(row[1] ?? row[0] ?? "").trim();
+        const resourceName = str(row[2] ?? "").trim();
+        if (!projectName || !resourceName) continue;
+
+        for (const [colIdx, monthKey] of monthMap.entries()) {
+          const v = num(row[colIdx] ?? 0);
+          if (v === 0) continue;
+          allocations.push({ Id: null, ProjectTitle: projectName, ResourceName: resourceName, MonthKey: monthKey, Value: v });
+        }
+      }
+    }
+    log("Allocazioni", { count: allocations.length });
+
+    // 9. Populate state
+    state.projects = projects;
+    state.resources = resources;
+    state.allocations = allocations;
+    await ensureDefaultMonths();
+    // merge months working days
+    const merged = new Map(state.months.map(m => [m.MonthKey, { ...m }]));
+    for (const m of months) {
+      const ex = merged.get(m.MonthKey);
+      if (!ex) merged.set(m.MonthKey, m);
+      else merged.set(m.MonthKey, { ...ex, WorkingDays: m.WorkingDays || ex.WorkingDays });
+    }
+    state.months = Array.from(merged.values()).sort((a,b)=>str(a.MonthKey).localeCompare(str(b.MonthKey)));
+
+    // 10. Save cache
+    saveToCache();
+
+    // 11. Push to SharePoint in batches
+    await acquireToken();
+
+    const batchSize = 20;
+    const delayMs = 1500;
+
+    async function pushInBatches(items, pushFn, label) {
+      let migrated = 0;
+      for (let i=0; i<items.length; i += batchSize) {
+        const chunk = items.slice(i, i + batchSize);
+        const promises = chunk.map(async (it) => {
+          try {
+            await pushFn(it);
+            migrated += 1;
+          } catch (e) {
+            log(`Errore migrazione ${label}`, { error: String(e), item: it }, "WARN");
+          }
+        });
+        await Promise.all(promises);
+        log(`${label}: ${migrated}/${items.length} migrati`);
+        const ms = document.getElementById("migrationStatus");
+        if (ms) ms.textContent = `${label}: ${migrated}/${items.length} migrati`;
+        await sleep(delayMs);
+      }
+      return migrated;
+    }
+
+    await pushInBatches(projects, async (p) => spCreateItem(CONFIG.lists.projects, { Title: str(p.Title).substring(0,255) }), "Progetti");
+    await pushInBatches(resources, async (r) => spCreateItem(CONFIG.lists.resources, { Title: str(r.ResourceName).substring(0,255) }), "Risorse");
+    await pushInBatches(allocations, async (a) => spCreateItem(CONFIG.lists.allocations, allocationToSpPayload(a)), "Allocazioni");
+    await pushInBatches(state.months, async (m) => spCreateItem(CONFIG.lists.months, monthToSpPayload(m)), "Mesi");
+
+    renderAll();
+    log("=== MIGRAZIONE COMPLETATA ===");
+    toast("Migrazione completata", "success");
+  } catch (e) {
+    log("Migrazione fallita", { error: String(e) }, "ERROR");
+    toast("Migrazione fallita", "error");
+  }
+}
+
+/** =========================
+ *  Force sync
+ *  ========================= */
+async function forceSync() {
+  try {
+    if (!state.online) {
+      toast("Sei offline", "warn");
+      return;
+    }
+    if (!state.account) {
+      toast("Esegui login per sync", "warn");
+      return;
+    }
+    await acquireToken();
+    await loadAllFromSharePoint();
+    saveToCache();
+    renderAll();
+    toast("Sync completata", "success");
+  } catch (e) {
+    log("Force sync fallita", { error: String(e) }, "ERROR");
+    toast("Force sync fallita", "error");
+  }
+}
+
+/** =========================
+ *  Events wiring
+ *  ========================= */
+function wireEvents() {
+  document.getElementById("btnLogin").addEventListener("click", login);
+  document.getElementById("btnLogout").addEventListener("click", logout);
+
+  for (const t of ["progetti","pianificazione","risorse","configurazione","setup"]) {
+    const btn = document.getElementById(`tabBtn_${t}`);
+    btn.addEventListener("click", () => setActiveTab(t));
+  }
+
+  document.getElementById("btnNewProject").addEventListener("click", () => openProjectModal(null));
+  document.getElementById("btnSaveProject").addEventListener("click", saveProjectFromModal);
+  document.getElementById("btnCloseProjectModal").addEventListener("click", closeProjectModal);
+  document.getElementById("btnCancelProject").addEventListener("click", closeProjectModal);
+
+  document.getElementById("btnPrevProjects").addEventListener("click", () => {
+    state.projectsPage = Math.max(1, state.projectsPage - 1);
+    renderProjects();
+  });
+  document.getElementById("btnNextProjects").addEventListener("click", () => {
+    state.projectsPage += 1;
+    renderProjects();
+  });
+
+  ["filterSearch","filterStatus","filterPriority","filterRefit"].forEach(id => {
+    document.getElementById(id).addEventListener("input", () => { state.projectsPage = 1; renderProjects(); });
+    document.getElementById(id).addEventListener("change", () => { state.projectsPage = 1; renderProjects(); });
+  });
+
+  document.getElementById("btnForceSync").addEventListener("click", forceSync);
+
+  document.getElementById("btnNewResource").addEventListener("click", () => openResourceModal(null));
+  document.getElementById("btnSaveResource").addEventListener("click", saveResourceFromModal);
+  document.getElementById("btnCloseResourceModal").addEventListener("click", closeResourceModal);
+  document.getElementById("btnCancelResource").addEventListener("click", closeResourceModal);
+
+  document.getElementById("btnCloseMonthModal").addEventListener("click", closeMonthModal);
+  document.getElementById("btnCancelMonth").addEventListener("click", closeMonthModal);
+  document.getElementById("btnSaveMonth").addEventListener("click", saveMonthFromModal);
+
+  document.getElementById("btnImportExcel").addEventListener("click", () => document.getElementById("fileExcel").click());
+  document.getElementById("fileExcel").addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    await importExcel(f);
+  });
+
+  document.getElementById("btnExportExcel").addEventListener("click", exportExcel);
+
+  document.getElementById("btnBackupJson").addEventListener("click", backupJson);
+  document.getElementById("btnRestoreJson").addEventListener("click", () => document.getElementById("fileJson").click());
+  document.getElementById("fileJson").addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    await restoreJson(f);
+  });
+
+  document.getElementById("btnClearLogs").addEventListener("click", () => {
+    state.logs = [];
+    const box = document.getElementById("logBox");
+    box.textContent = "";
+  });
+
+  document.getElementById("btnCopyLogs").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(state.logs.join("\n\n"));
+      toast("Log copiati", "success");
+    } catch (e) {
+      toast("Copia non disponibile", "warn");
+    }
+  });
+
+  document.getElementById("btnTestConnection").addEventListener("click", async () => {
+    try {
+      if (!state.account) { toast("Esegui login", "warn"); return; }
+      await acquireToken();
+      const data = await testConnection();
+      toast("Connessione OK", "success");
+      log("Test connection OK", data);
+    } catch (e) {
+      toast("Connessione KO", "error");
+      log("Test connection KO", { error: String(e) }, "ERROR");
+    }
+  });
+
+  document.getElementById("btnCheckLists").addEventListener("click", async () => {
+    try {
+      if (!state.account) { toast("Esegui login", "warn"); return; }
+      await acquireToken();
+      const st = await checkLists();
+      renderListsStatus();
+      toast("Check lists completato", "success");
+      log("Check lists", st);
+    } catch (e) {
+      toast("Check lists fallito", "error");
+      log("Check lists fallito", { error: String(e) }, "ERROR");
+    }
+  });
+
+  document.getElementById("btnCreateLists").addEventListener("click", async () => {
+    try {
+      if (!state.account) { toast("Esegui login", "warn"); return; }
+      await acquireToken();
+      const res = await createLists();
+      toast("Create lists completato (vedi log)", "success");
+      log("Create lists result", res);
+    } catch (e) {
+      toast("Create lists fallito", "error");
+      log("Create lists fallito", { error: String(e) }, "ERROR");
+    }
+  });
+
+  document.getElementById("btnMigrateExcel").addEventListener("click", () => document.getElementById("fileMigrateExcel").click());
+  document.getElementById("fileMigrateExcel").addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    await migrateExcelToSharePoint(f);
+  });
+
+  window.addEventListener("online", () => { setOnlineStatus(true); toast("Online", "info"); });
+  window.addEventListener("offline", () => { setOnlineStatus(false); toast("Offline", "warn"); });
+
+  // Residui live calc
+  const effVend = document.getElementById("p_EffortVenduti");
+  const effReal = document.getElementById("p_EffortReali");
+  function updResidui() {
+    const residui = num(effVend.value) - num(effReal.value);
+    setVal("p_Residui", Math.round(residui * 100) / 100);
+  }
+  effVend.addEventListener("input", updResidui);
+  effReal.addEventListener("input", updResidui);
+
+  // Holidays placeholder implemented as a simple prompt-based add
+  document.getElementById("btnNewHoliday").addEventListener("click", async () => {
+    try {
+      const resourceName = prompt("Nome risorsa per ferie:");
+      if (!resourceName) return;
+      const date = prompt("Data (YYYY-MM-DD):");
+      if (!date) return;
+      const note = prompt("Nota (opzionale):") || "";
+      const h = { Id: null, ResourceName: resourceName.trim(), Date: date.trim(), Note: note.trim() };
+      state.holidays.push(h);
+      // attempt SP create
+      try {
+        if (state.online && state.account) {
+          const created = await spCreateItem(CONFIG.lists.holidays, holidayToSpPayload(h));
+          if (created && created.Id) h.Id = created.Id;
+        }
+      } catch (e) {
+        log("Errore creazione holiday su SharePoint", { error: String(e) }, "WARN");
+      }
+      saveToCache();
+      renderHolidays();
+      toast("Ferie aggiunta", "success");
+    } catch (e) {
+      log("Aggiunta ferie fallita", { error: String(e) }, "ERROR");
+      toast("Aggiunta ferie fallita", "error");
+    }
+  });
+
+  // close modals on backdrop click
+  document.getElementById("projectModal").addEventListener("click", (ev) => {
+    if (ev.target && ev.target.id === "projectModal") closeProjectModal();
+  });
+  document.getElementById("resourceModal").addEventListener("click", (ev) => {
+    if (ev.target && ev.target.id === "resourceModal") closeResourceModal();
+  });
+  document.getElementById("monthModal").addEventListener("click", (ev) => {
+    if (ev.target && ev.target.id === "monthModal") closeMonthModal();
+  });
+}
+
+async function deleteHoliday(h) {
+  if (!h) return;
+  const ok = confirm(`Eliminare ferie di "${h.ResourceName}" in data ${h.Date}?`);
+  if (!ok) return;
+  state.holidays = state.holidays.filter(x => Number(x.Id) !== Number(h.Id) || !h.Id);
+  try {
+    if (state.online && state.account && h.Id) await spDeleteItem(CONFIG.lists.holidays, Number(h.Id));
+  } catch (e) {
+    log("Errore delete holiday su SharePoint", { error: String(e) }, "WARN");
+  }
+  saveToCache();
+  renderHolidays();
+}
+
+/** =========================
+ *  Init
+ *  ========================= */
+async function init() {
+  await msalInstance.initialize(); // CRITICAL for MSAL v2.38
+  setOnlineStatus(navigator.onLine);
+
+  const siteLbl = document.getElementById("spSiteUrlLabel");
+  if (siteLbl) siteLbl.textContent = CONFIG.spSiteUrl;
+
+  // Fast paint
+  loadFromCache();
+  await ensureDefaultMonths();
+  renderAll();
+
+  // fill selects
+  fillSelect(document.getElementById("filterStatus"), STATUS_OPTIONS, "Tutti");
+  fillSelect(document.getElementById("filterPriority"), PRIORITY_OPTIONS, "Tutte");
+  fillSelect(document.getElementById("p_Status"), STATUS_OPTIONS, "—");
+  fillSelect(document.getElementById("p_Priority"), PRIORITY_OPTIONS, "—");
+
+  wireEvents();
+
+  // Try restore session
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts && accounts.length > 0) {
+      state.account = msalInstance.getActiveAccount() || accounts[0];
+      msalInstance.setActiveAccount(state.account);
+      updateAuthUi();
+      await acquireToken();
+      await bootstrapData();
+    } else {
+      updateAuthUi();
+    }
+  } catch (e) {
+    log("Restore session fallita", { error: String(e) }, "WARN");
+    updateAuthUi();
+  }
+
+  // check lists status best-effort
+  try {
+    if (state.account) {
+      await acquireToken();
+      await checkLists();
+      renderListsStatus();
+    }
+  } catch (e) {
+    log("Check lists iniziale fallito", { error: String(e) }, "WARN");
+  }
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
